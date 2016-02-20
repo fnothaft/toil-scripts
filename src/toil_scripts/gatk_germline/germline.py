@@ -38,7 +38,7 @@ import multiprocessing
 import sys
 from collections import OrderedDict
 from toil.job import Job
-from toil_scripts.batch_alignment.bwa_alignment import upload_to_s3
+from toil_scripts.batch_alignment.bwa_alignment import upload_to_s3, docker_call
 
 def build_parser():
     """
@@ -73,39 +73,6 @@ def make_directory(path):
             pass
         else:
             raise
-
-
-def docker_call_hc(work_dir, tool_parameters, tool, input_files=None, output_files=None):
-    """
-    Runs docker call and checks that input and output files exist.
-
-    :param work_dir: working directory
-    :param tool_parameters: parameters for docker container tool, list
-    :param tool: docker container tool, str
-    :param input_files: list of input files
-    :param output_files: list of output files
-    """
-    for input_file in input_files:
-        try:
-            sys.stderr.write("joining %s and %s" % (work_dir, input_file))
-            path = os.path.join(work_dir, input_file)
-            assert os.path.exists(path)
-        except AssertionError:
-            assert os.path.exists(input_file)
-    base_docker_call = 'docker run -v {work_dir}:/data'.format(work_dir=work_dir)
-    try:
-        subprocess.check_call(base_docker_call.split() + [tool] + tool_parameters)
-    except subprocess.CalledProcessError:
-        raise RuntimeError('docker command returned a non-zero exit status. Check error logs.')
-    except OSError:
-        raise RuntimeError('docker not found on system. Install on all nodes.')
-    for output_file in output_files:
-        try:
-            path = os.path.join(work_dir, output_file)
-            assert os.path.exists(path)
-        except AssertionError:
-            assert os.path.exists(output_file)
-
 
 def download_url(job, url, filename):
     """
@@ -233,7 +200,10 @@ def create_reference_index_hc(job, shared_ids, input_args):
     faidx_output = os.path.join(work_dir, 'ref.fa.fai')
     # Call: Samtools
     faidx_command = ['faidx', 'ref.fa']
-    docker_call_hc(work_dir, faidx_command, 'quay.io/ucsc_cgl/samtools', [ref_path], [faidx_output])
+    docker_call(work_dir = work_dir,
+                tool_parameters = faidx_command,
+                tool = 'quay.io/ucsc_cgl/samtools',
+                sudo = input_args['sudo'])
     # Update fileStore for output
     shared_ids['ref.fa.fai'] = job.fileStore.writeGlobalFile(faidx_output)
     job.addChildJobFn(create_reference_dict_hc, shared_ids, input_args)
@@ -255,7 +225,10 @@ def create_reference_dict_hc(job, shared_ids, input_args):
     # Call: picardtools
     picard_output = os.path.join(work_dir, 'ref.dict')
     command = ['CreateSequenceDictionary', 'R=ref.fa', 'O=ref.dict']
-    docker_call_hc(work_dir, command, 'quay.io/ucsc_cgl/picardtools', [ref_path], [picard_output])
+    docker_call(work_dir = work_dir,
+                tool_parameters = command,
+                tool = 'quay.io/ucsc_cgl/picardtools',
+                sudo = input_args['sudo'])
     # Update fileStore for output
     shared_ids['ref.dict'] = job.fileStore.writeGlobalFile(picard_output)
     job.addChildJobFn(spawn_batch_variant_calling, shared_ids, input_args)
@@ -329,7 +302,10 @@ def index(job, shared_ids, input_args):
     output_path = os.path.join(work_dir, 'toil.bam.bai')
     # Call: index the normal.bam
     parameters = ['index', 'toil.bam']
-    docker_call_hc(work_dir, parameters, 'quay.io/ucsc_cgl/samtools', [bam_path], [output_path])
+    docker_call(work_dir = work_dir,
+                tool_parameters = parameters,
+                tool = 'quay.io/ucsc_cgl/samtools',
+                sudo = input_args['sudo'])
     # Update FileStore and call child
     shared_ids['toil.bam.bai'] = job.fileStore.writeGlobalFile(output_path)
     job.addChildJobFn(haplotype_caller, shared_ids, input_args)
@@ -358,7 +334,10 @@ def haplotype_caller(job, shared_ids, input_args):
                '-o', 'unified.raw.BOTH.gatk.vcf',
                '-stand_emit_conf', '10.0',
                '-stand_call_conf', '30.0']
-    docker_call_hc(work_dir, command, 'quay.io/ucsc_cgl/gatk', inputs, [output])
+    docker_call(work_dir = work_dir,
+                tool_parameters = command,
+                tool = 'quay.io/ucsc_cgl/gatk',
+                sudo = input_args['sudo'])
     # Update fileStore and spawn child job
     shared_ids['unified.raw.BOTH.gatk.vcf'] = job.fileStore.writeGlobalFile(os.path.join(work_dir, output))
     job.addChildJobFn(vqsr_snp, shared_ids, input_args)
@@ -392,7 +371,10 @@ def vqsr_snp(job, shared_ids, input_args):
                '-recalFile', 'HAPSNP.recal',
                '-tranchesFile', 'HAPSNP.tranches',
                '-rscriptFile', 'HAPSNP.plots']
-    docker_call_hc(work_dir, command, 'quay.io/ucsc_cgl/gatk', inputs, outputs)
+    docker_call(work_dir = work_dir,
+                tool_parameters = command,
+                tool ='quay.io/ucsc_cgl/gatk',
+                sudo = input_args['sudo'])
     shared_ids = write_to_filestore(job, work_dir, shared_ids, *outputs)
     job.addChildJobFn(apply_vqsr_snp, shared_ids, input_args)
 
@@ -423,7 +405,10 @@ def apply_vqsr_snp(job, shared_ids, input_args):
                '-tranchesFile', 'HAPSNP.tranches',
                '-recalFile', 'HAPSNP.recal',
                '-mode', 'SNP']
-    docker_call_hc(work_dir, command, 'quay.io/ucsc_cgl/gatk', inputs, [output])
+    docker_call(work_dir = work_dir,
+                tool_parameters = command,
+                tool = 'quay.io/ucsc_cgl/gatk',
+                sudo = input_args['sudo'])
 
     upload_or_move_hc(job, input_args, output)
 
@@ -474,7 +459,10 @@ def vqsr_indel(job, shared_ids, input_args):
                '-tranchesFile', 'HAPINDEL.tranches',
                '-rscriptFile', 'HAPINDEL.plots',
                '--maxGaussians', '4']
-    docker_call_hc(work_dir, command, 'quay.io/ucsc_cgl/gatk', inputs, outputs)
+    docker_call(work_dir = work_dir,
+                tool_parameters = command,
+                tool ='quay.io/ucsc_cgl/gatk',
+                sudo = input_args['sudo'])
     shared_ids = write_to_filestore(job, work_dir, shared_ids, *outputs)
     job.addChildJobFn(apply_vqsr_indel, shared_ids, input_args)
 
@@ -504,7 +492,10 @@ def apply_vqsr_indel(job, shared_ids, input_args):
                '-tranchesFile', 'HAPINDEL.tranches',
                '-recalFile', 'HAPINDEL.recal',
                '-mode', 'INDEL']
-    docker_call_hc(work_dir, command, 'quay.io/ucsc_cgl/gatk', inputs, [output])
+    docker_call(work_dir = work_dir,
+                tool_parameters = command,
+                tool = 'quay.io/ucsc_cgl/gatk',
+                sudo = input_args['sudo'])
 
     upload_or_move_hc(job, input_args, output)
 
@@ -528,6 +519,7 @@ if __name__ == '__main__':
               'file_size': args.file_size,
               'ssec': None,
               'aws_access_key': None,
-              'aws_secret_key': None}
+              'aws_secret_key': None,
+              'sudo': False}
     
     Job.Runner.startToil(Job.wrapJobFn(batch_start, inputs), args)

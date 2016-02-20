@@ -353,7 +353,8 @@ if __name__ == '__main__':
                              'file_size': args.file_size,
                              'aws_access_key':  args.aws_access_key,
                              'aws_secret_key':  args.aws_secret_key,
-                             'suffix': '.adam'}
+                             'suffix': '.adam',
+                             'sudo': args.sudo}
 
     gatk_gatk_call_inputs = {'ref.fa': args.ref,
                              'phase.vcf': args.phase,
@@ -369,7 +370,8 @@ if __name__ == '__main__':
                              'file_size': args.file_size,
                              'aws_access_key':  args.aws_access_key,
                              'aws_secret_key':  args.aws_secret_key,
-                             'suffix': '.gatk'}
+                             'suffix': '.gatk',
+                             'sudo': args.sudo}
 
     if (args.pipeline_to_run != "adam" and
         args.pipeline_to_run != "gatk" and
