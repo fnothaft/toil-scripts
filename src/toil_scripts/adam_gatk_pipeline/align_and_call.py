@@ -339,7 +339,7 @@ if __name__ == '__main__':
                               'suffix': '.gatk',
                               's3_dir': "%s/analysis/%s" % (args.s3_bucket, args.uuid),}
     
-    gatk_adam_call_inputs = {'ref.fa': args.ref,
+    gatk_adam_call_inputs = {'ref.fa': args.ref.replace('.fa', '.sorted.fa'),
                              'phase.vcf': args.phase,
                              'mills.vcf': args.mills,
                              'dbsnp.vcf': args.dbsnp,

@@ -11,7 +11,6 @@ set -x -v
 # swapped phase and mills --> pos error in #https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL.wgs.1000G_phase3.GRCh38.ncbi_remapper.20150424.shapeit2_indels.vcf \
 python -m toil_scripts.adam_gatk_pipeline.align_and_call \
     aws:us-west-2:fnothaft-toil-jobstore \
-    --restart \
     --retryCount 1 \
     --uuid SRR062643 \
     --s3_bucket fnothaft-fc-test-west-2 \
