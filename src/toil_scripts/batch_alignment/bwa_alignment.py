@@ -197,8 +197,6 @@ def docker_call(work_dir,
 
     base_docker_call = ('docker run %s --log-driver=none -v %s:/data' % (rm, work_dir)).split()
 
-    log.warn("Calling docker with %s." % " ".join(base_docker_call))
-
     if sudo:
         base_docker_call = ['sudo'] + base_docker_call
     if java_opts:
@@ -206,8 +204,8 @@ def docker_call(work_dir,
     if docker_parameters:
         base_docker_call = base_docker_call + docker_parameters
 
-    log.warn("Calling docker with %s." % " ".join(base_docker_call))
-    sys.stderr.write( "Calling docker with %s\n" % " ".join(base_docker_call))
+    log.warn("Calling docker with %s." % " ".join(base_docker_call + [tool] + tool_parameters))
+    sys.stderr.write( "Calling docker with %s\n" % " ".join(base_docker_call + [tool] + tool_parameters))
 
     try:
         if outfile:
@@ -392,7 +390,7 @@ def run_bwa(job, job_vars):
                       '/data/r2.fq.gz']
 
         try:
-            docker_call(tool='quay.io/ucsc_cgl/bwakit:0.7.12--f05007590c9e2953d20a0a18aa412454eed3ab59',
+            docker_call(tool='quay.io/ucsc_cgl/bwakit:0.7.12--testuid',
                         tool_parameters=parameters, work_dir=work_dir, sudo=sudo)
         except:
             last = work_dir.split('/')[-1]

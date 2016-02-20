@@ -249,6 +249,7 @@ def spawn_batch_variant_calling(job, shared_ids, input_args):
     # does the config file exist locally? if not, try to read from job store
     if not os.path.exists(config):
 
+        work_dir = job.fileStore.getLocalTempDir()
         config_path = os.path.join(work_dir, 'config.txt')
         job.fileStore.readGlobalFile(config, config_path)
         config = config_path
@@ -334,10 +335,16 @@ def haplotype_caller(job, shared_ids, input_args):
                '-o', 'unified.raw.BOTH.gatk.vcf',
                '-stand_emit_conf', '10.0',
                '-stand_call_conf', '30.0']
-    docker_call(work_dir = work_dir,
-                tool_parameters = command,
-                tool = 'quay.io/ucsc_cgl/gatk',
-                sudo = input_args['sudo'])
+    try:
+        docker_call(work_dir = work_dir,
+                    tool_parameters = command,
+                    tool = 'quay.io/ucsc_cgl/gatk',
+                    sudo = input_args['sudo'])
+    except:
+        sys.stderr.write("Running haplotype caller with %s in %s failed." % (
+            " ".join(command), work_dir))
+        raise
+
     # Update fileStore and spawn child job
     shared_ids['unified.raw.BOTH.gatk.vcf'] = job.fileStore.writeGlobalFile(os.path.join(work_dir, output))
     job.addChildJobFn(vqsr_snp, shared_ids, input_args)
