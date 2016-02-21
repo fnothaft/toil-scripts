@@ -29,11 +29,11 @@ python -m toil_scripts.adam_gatk_pipeline.align_and_call \
     --num_nodes 3 \
     --driver_memory 200 \
     --executor_memory 200 \
-    --phase https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/Mills_and_1000G_gold_standard.indels.b38.primary_assembly.vcf \
-    --mills https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/Mills_and_1000G_gold_standard.indels.b38.primary_assembly.vcf \
+    --phase https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf \
+    --mills https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf \
     --dbsnp https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf \
-    --omni https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/1000G_omni2.5.hg38.vcf \
-    --hapmap https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/hapmap_3.3.hg38.vcf \
+    --omni https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf \
+    --hapmap https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf \
     --batchSystem=mesos \
     --mesosMaster $(hostname -i):5050 \
     --workDir /var/lib/toil \
@@ -41,3 +41,8 @@ python -m toil_scripts.adam_gatk_pipeline.align_and_call \
     --logInfo \
     --clean never
 
+#    --phase https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/Mills_and_1000G_gold_standard.indels.b38.primary_assembly.vcf \
+#    --mills https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/Mills_and_1000G_gold_standard.indels.b38.primary_assembly.vcf \
+#    --dbsnp https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf \
+#    --omni https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/1000G_omni2.5.hg38.vcf \
+#    --hapmap https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/hapmap_3.3.hg38.vcf \
