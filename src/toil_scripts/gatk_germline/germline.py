@@ -89,9 +89,9 @@ def download_url(job, url, filename):
     if not os.path.exists(file_path):
         try:
             subprocess.check_call(['curl', '-fs', '--retry', '5', '--create-dir', url, '-o', file_path])
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as cpe:
             raise RuntimeError(
-                '\nNecessary file could not be acquired: {}. Check input URL'.format(url))
+                '\nNecessary file could not be acquired: %s. Got error "%s". Check input URL' % (url, e))
         except OSError:
             raise RuntimeError('Failed to find "curl". Install via "apt-get install curl"')
     assert os.path.exists(file_path)
@@ -417,12 +417,10 @@ def apply_vqsr_snp(job, shared_ids, input_args):
                 tool = 'quay.io/ucsc_cgl/gatk',
                 sudo = input_args['sudo'])
 
-    upload_or_move_hc(job, input_args, output)
+    upload_or_move_hc(work_dir, input_args, output)
 
 
-def upload_or_move_hc(job, input_args, output):
-    
-    work_dir = job.fileStore.getLocalTempDir()
+def upload_or_move_hc(work_dir, input_args, output):
 
     # are we moving this into a local dir, or up to s3?
     if input_args['output_dir']:
@@ -434,7 +432,7 @@ def upload_or_move_hc(job, input_args, output):
 
     elif input_args['s3_dir']:
         
-        upload_to_s3(work_dir, job_vars, output)
+        upload_to_s3(work_dir, input_args, output)
 
     else:
 
@@ -504,7 +502,7 @@ def apply_vqsr_indel(job, shared_ids, input_args):
                 tool = 'quay.io/ucsc_cgl/gatk',
                 sudo = input_args['sudo'])
 
-    upload_or_move_hc(job, input_args, output)
+    upload_or_move_hc(work_dir, input_args, output)
 
 
 if __name__ == '__main__':
