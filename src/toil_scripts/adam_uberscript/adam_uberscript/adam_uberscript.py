@@ -1,0 +1,408 @@
+#!/usr/bin/env python2.7
+"""
+Author: Audrey Musselman-Brown
+Date: 2/12/16
+
+Modified from John Vivian's automated_scaling_tests.py script
+"""
+import logging
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)-15s:%(levelname)s:%(name)s:%(message)s',
+                    datefmt='%m-%d %H:%M:%S')
+
+import argparse
+from collections import namedtuple
+import csv
+import os
+import random
+import subprocess
+import boto
+from boto.exception import BotoServerError, EC2ResponseError
+import boto.ec2.cloudwatch
+import time
+from uuid import uuid4
+from tqdm import tqdm
+import errno
+from boto_lib import get_instance_ids
+from datetime import datetime, timedelta
+import threading
+import boto.sdb
+from boto.ec2 import connect_to_region
+from datetime import datetime
+from itertools import groupby
+from automated_scaling import *
+
+metric_endtime_margin = timedelta(hours=1)
+metric_initial_wait_period_in_seconds = 0
+metric_collection_interval_in_seconds = 3600
+metric_start_time_margin = 1800
+
+scaling_initial_wait_period_in_seconds = 300
+cluster_scaling_interval_in_seconds = 300
+
+cluster_size_lock = threading.Lock()
+
+aws_region = 'us-west-2'
+
+ref = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa"
+amb = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.amb"
+ann = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.ann"
+bwt = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.bwt"
+pac = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.pac"
+sa = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.sa"
+fai = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.fai"
+alt = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.alt"
+phase = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL.wgs.1000G_phase3.GRCh38.ncbi_remapper.20150424.shapeit2_indels.vcf.gz"
+mills = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/Mills_and_1000G_gold_standard.indels.b38.primary_assembly.vcf.gz"
+dbsnp = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf.gz"
+omni = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL.wgs.1000G_phase3.GRCh38.ncbi_remapper.20150424.shapeit2_indels.vcf.gz"
+hapmap = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf.gz"
+
+
+def launch_cluster(params):
+    """
+    Launches a toil cluster of size N, with shared dir S, of instance type I, at a spot bid of B
+
+    params: argparse.Namespace      Input arguments
+    """
+    log.info('Launching cluster of size: {} and type: {}'.format(params.num_workers, params.instance_type))
+    subprocess.check_call(['cgcloud',
+                           'create-cluster',
+                           '--leader-instance-type', params.leader_type,
+                           '--instance-type', params.instance_type,
+                           '--share', params.share,
+                           '--num-workers', str(params.num_workers),
+                           '--cluster-name', params.cluster_name,
+                           '--spot-bid', str(params.spot_bid),
+                           '--leader-on-demand',
+                           '--num-threads', str(params.num_workers),
+                           '--ssh-opts',
+                           '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no',
+                           'toil'])
+
+
+def place_boto_on_leader(params):
+    log.info('Adding a .boto to leader to avoid credential timeouts.')
+    subprocess.check_call(['cgcloud', 'rsync', '--cluster-name', params.cluster_name,
+                           '--ssh-opts=-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no',
+                           'toil-leader', params.boto_path, ':'])
+
+
+def launch_pipeline(params):
+    """
+    Launches pipeline on toil-leader in a screen named the cluster run name
+
+    params: argparse.Namespace      Input arguments
+    """
+    if not params.jobstore:
+        jobstore = '{}-{}'.format(uuid4(), str(datetime.utcnow().date()))
+    else:
+        jobstore = params.jobstore
+    restart = '--restart' if params.restart else ''
+    log.info('Launching Pipeline and blocking. Check log.txt on leader for stderr and stdout')
+    try:
+        # Create screen session
+        subprocess.check_call(['cgcloud', 'ssh', '--cluster-name', params.cluster_name, 'toil-leader',
+                               '-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no',
+                               'screen', '-dmS', params.cluster_name])
+        # Run command on screen session
+        subprocess.check_call(['cgcloud', 'ssh', '--cluster-name', params.cluster_name, 'toil-leader',
+                               '-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no',
+                               'screen', '-S', params.cluster_name, '-X', 'stuff',
+                               "python", "-m", "toil-scripts.adam_gatk_pipeline.align_and_call",
+                               "aws:{0}:{1}".format(aws_region, jobstore),
+                               "--retryCount", "1",
+                               "--s3_bucket", "fnothaft-fc-test-west-2", # MAKE THIS A VARIABLE
+                               "--bucket_region", aws_region,
+                               "--aws_access_key", "${FC_AWS_ACCESS_KEY_ID}", # THESE SHOULDN'T BE HERE
+                               "--aws_secret_key", "${FC_AWS_SECRET_ACCESS_KEY}", # THESE SHOULDN'T BE HERE
+                               "--ref", ref,
+                               "--amb" amb,
+                               "--ann", ann,
+                               "--bwt", bwt,
+                               "--pac", pac,
+                               "--sa", sa,
+                               "--fai", fai,
+                               "--alt", alt,
+                               "--use_bwakit",
+                               "--num_nodes", "2", # what does this number affect? find out
+                               "--driver_memory", "50g", #entire node
+                               "--executor_memory", "50g",#entire node
+                               "--phase", phase,
+                               "--mills", mills,
+                               "--dbsnp", dbsnp,
+                               "--omni", omni,
+                               "--hapmap", hapmap,
+                               "--batchSystem", "mesos",
+                               "--mesosMaster", "$(hostname -i):5050",
+                               "--workDir", "/var/lib/toil"
+                               "--file_size", "1G"
+                               "--logInfo",
+                               restart])
+    except subprocess.CalledProcessError as e:
+        log.info('Pipeline exited with non-zero status code: {}'.format(e))
+
+
+def get_metric(cw, metric, instance_id, start, stop):
+    """
+    returns metric object associated with a paricular instance ID
+
+    metric_name: str            Name of Metric to be Collected
+    instance_id: str            Instance ID
+    start: float                ISO format of UTC time start point
+    stop: float                 ISO format of UTC time stop point
+    :return: metric object
+    """
+    namespace, metric_name = metric.rsplit('/', 1)
+    metric_object = cw.get_metric_statistics(namespace=namespace,
+                                             metric_name=metric_name,
+                                             dimensions={'InstanceId': instance_id},
+                                             start_time=start,
+                                             end_time=stop,
+                                             period=300,
+                                             statistics=['Average'])
+    return metric_object
+
+
+def get_cluster_size(cluster_name):
+    """
+    Returns the number of running toil-worker nodes
+    """
+    numlines = subprocess.check_output["cgcloud", "list", "-c", cluster_name, "toil-worker"].count("\n")
+    return numlines - 1 # Subtract 1 for header
+
+
+def get_desired_cluster_size(conn, dom):
+    
+    nodes_per_sample = Samples.load(conn, dom)
+    return sum(map(lambda x: x[1], nodes_per_sample.samples.values()))
+
+
+def update_cluster_size(conn, dom, n):
+    cluster_size = ClusterSize.load(conn, dom)
+    cluster_size.change_size(n)
+
+
+def grow_cluster(n, instance_type, cluster_name, spot_bid):
+    """
+    grow the cluster by n nodes
+    """
+    old_size = get_cluster_size(cluster_name)
+    new_size = old_size
+    while diff < n:
+        curr_size = new_size
+        ec2 = connect_to_region(aws_region)
+        zone = { z: ec2.get_spot_price_history(instance_type=instance_type, 
+                                               availability_zone=z,
+                                               product_description='Linux/UNIX',
+                                               start_time=datetime.utcnow().isoformat() )
+                 for z in ( aws_region + c for c in 'ab' ) }
+        log.info('Growing cluster by {} nodes of type: {}'.format(n, instance_type))
+        nodes = subprocess.check_call(['cgcloud',
+                                       'grow-cluster',
+                                       '--list',
+                                       '--instance-type', instance_type,
+                                       '--num-workers', str(n),
+                                       '--cluster-name', cluster_name,
+                                       '--spot-bid', str(spot_bid),
+                                       '--zone', zone,
+                                       'toil'])
+        new_size = nodes.count('\n') - 1 # Subtract 1 for header
+        diff = new_size-old_size
+        log.info('Successfully grew cluster by {} nodes of type: {}'.format(new_size-curr_size, instance_type))
+    
+
+def manage_metrics_and_cluster_scaling(params):
+    conn = boto.sdb.connect_to_region(aws_region)
+    dom = conn.get_domain("{0}--files".format(params.jobstore))
+    grow_cluster_thread = threading.Thread(target=monitor_cluster_size, args(params, conn, dom))
+    metric_collection_thread = threading.Thread(target=collect_realtime_metrics, args(params, conn, dom))
+    grow_cluster_thread.start()
+    metric_collection_thread.start()
+    grow_cluster_thread.join()
+    metric_collection_thread.join()
+
+def monitor_cluster_size(params, conn, dom):
+    """
+    Monitors cluster size and grows it if the desired size is larger than the current size
+    """
+    log.info('Cluster size monitor has started.')
+    time.sleep(scaling_initial_wait_period_in_seconds)
+    while True:
+        size_check_time = time.time()
+        # If cluster is too small, grow it
+        cluster_size = get_cluster_size()
+        desired_cluster_size = get_desired_cluster_size()
+        if cluster_size < desired_cluster_size:
+            with node_allocation_lock:
+                grow_cluster(desired_cluster_size - cluster_size, params.instance_type, cluster_name, spot_bid)
+        update_cluster_size(desired_cluster_size)
+
+        # Sleep
+        resize_time = time.time() - size_check_time
+        log.info('Cluster is {} nodes as of {}'.format(get_cluster_size(), resize_time))
+        wait_time = cluster_scaling_interval_in_seconds - resize_time
+        if wait_time > 0:
+            time.sleep(wait_time)
+
+
+def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2'):
+    """
+    Collect metrics from AWS instances in 1 hour intervals.
+    Instances that have gone idle (below threshold CPU value) are terminated.
+
+    params: argparse.Namespace      Input arguments
+    region: str                     AWS region metrics are being collected from
+    uuid: str                       UUID of metric collection
+    """
+    list_of_metrics = ['AWS/EC2/CPUUtilization',
+                       'CGCloud/MemUsage',
+                       'CGCloud/DiskUsage_mnt_ephemeral',
+                       'CGCloud/DiskUsage_root',
+                       'AWS/EC2/NetworkIn',
+                       'AWS/EC2/NetworkOut',
+                       'AWS/EC2/DiskWriteOps',
+                       'AWS/EC2/DiskReadOps']
+
+    # Create output directory
+    uuid = str(uuid4())
+    date = str(datetime.utcnow().date())
+    dir_path = '{}_{}_{}'.format(params.cluster_name, uuid, date)
+    mkdir_p(dir_path)
+
+    start = time.time() - metric_start_time_margin
+
+    # Create connections to ec2 and cloudwatch
+    conn = boto.ec2.connect_to_region(region)
+    cw = boto.ec2.cloudwatch.connect_to_region(region)
+    # Create initial variables
+    start = datetime.utcfromtimestamp(start)
+    DataPoint = namedtuple('datapoint', ['instance_id', 'value', 'timestamp'])
+    timestamps = {}
+    # Begin loop
+    log.info('Metric collection has started. '
+             'Waiting {} seconds before initial collection.'.format(metric_initial_wait_period_in_seconds))
+    time.sleep(metric_initial_wait_period_in_seconds)
+    
+    while True:
+        ids = get_instance_ids(filter_cluster=params.cluster_name, filter_name=params.namespace + '_toil-worker')
+        if not ids:
+            break
+        metric_collection_time = time.time()
+        try:
+            for instance_id in tqdm(ids):
+                idle = False
+                for metric in list_of_metrics:
+                    datapoints = []
+                    aws_start = timestamps.get(instance_id, start)
+                    aws_stop = datetime.utcnow() + metric_endtime_margin
+                    metric_object = get_metric(cw, metric, instance_id, aws_start, aws_stop)
+                    for datum in metric_object:
+                        d = DataPoint(instance_id=instance_id, value=datum['Average'], timestamp=datum['Timestamp'])
+                        datapoints.append(d)
+                    # Save data in local directory
+                    if datapoints:
+                        datapoints = sorted(datapoints, key=lambda x: x.timestamp)
+                        with open(os.path.join(dir_path, '{}.csv'.format(os.path.basename(metric))), 'a') as f:
+                            writer = csv.writer(f, delimiter='\t')
+                            writer.writerows(datapoints)
+                    # Check if instance's CPU has been idle the last 30 minutes.
+                    if metric == 'AWS/EC2/CPUUtilization':
+                        averages = [x.value for x in sorted(datapoints, key=lambda x: x.timestamp)][-6:]
+                        # If there is at least 30 minutes of data points and max is below threshold, flag to be killed.
+                        if len(averages) == 6:
+                            if max(averages) < threshold:
+                                idle = True
+                                log.info('Flagging {} to be killed. '
+                                         'Max CPU {} for last 30 minutes.'.format(instance_id, max(averages)))
+                # Kill instance if idle and cluster is too large
+                if idle:
+                    try:
+                        with node_allocation_lock:
+                            cluster_size = get_cluster_size()
+                            if cluster_size > get_desired_cluster_size():
+                                log.info('Terminating Instance: {}'.format(instance_id))
+                                conn.terminate_instances(instance_ids=[instance_id])
+                                update_cluster_size(cluster_size - 1)
+                    except (EC2ResponseError, BotoServerError) as e:
+                        log.info('Error terminating instance: {}\n{}'.format(instance_id, e))
+                # Set start point to be last collected timestamp
+                timestamps[instance_id] = max(x.timestamp for x in datapoints) if datapoints else start
+        except BotoServerError:
+            log.error('Giving up trying to fetch metric for this interval')
+    # Sleep
+    collection_time = time.time() - metric_collection_time
+    log.info('Metric collection took: {} seconds. Waiting one hour.'.format(collection_time))
+    wait_time = metric_collection_interval_in_seconds - collection_time
+    if wait_time < 0:
+        log.warning('Collection time exceeded metric collection interval by: %i', -wait_time)
+    else:
+        time.sleep(wait_time)
+    log.info('Metric collection has finished.')
+
+
+def mkdir_p(path):
+    """
+    It is Easier to Ask for Forgiveness than Permission
+    """
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+
+def main():
+    """
+    Modular script for running toil pipelines
+    """
+    parser = argparse.ArgumentParser(description=main.__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    subparsers = parser.add_subparsers(dest='command')
+
+    # Launch Cluster
+    parser_cluster = subparsers.add_parser('launch-cluster', help='Launches AWS cluster via CGCloud')
+    parser_cluster.add_argument('-s', '--num-workers', required=True, help='Number of workers desired in the cluster.')
+    parser_cluster.add_argument('-c', '--cluster-name', required=True, help='Name of cluster.')
+    parser_cluster.add_argument('-S', '--share', required=True,
+                                help='Full path to directory: pipeline script, launch script, config, and master key.')
+    parser_cluster.add_argument('--spot-bid', default=1.00, help='Change spot price of instances')
+    parser_cluster.add_argument('-t', '--instance-type', default='c3.8xlarge',
+                                help='slave instance type. e.g.  m4.large or c3.8xlarge.')
+    parser_cluster.add_argument('-T', '--leader-type', default='m3.medium', help='Sets leader instance type.')
+    parser_cluster.add_argument('-b', '--boto-path', default='/home/mesosbox/.boto', type=str,
+                                help='Path to local .boto file to be placed on leader.')
+
+    # Launch Pipeline
+    parser_pipeline = subparsers.add_parser('launch-pipeline', help='Launches pipeline')
+    parser_pipeline.add_argument('-c', '--cluster-name', required=True, help='Name of cluster.')
+    parser_pipeline.add_argument('-j', '--jobstore', default=None,
+                                 help='Name of jobstore. Defaults to UUID-Date if not set')
+    parser_pipeline.add_argument('--restart', default=None, action='store_true',
+                                 help='Attempts to restart pipeline, requires existing jobstore.')
+    parser_pipeline.add_argument('-b', '--bucket', default='tcga-output', help='Set destination bucket.')
+    
+
+    # Launch Metric Collection
+    parser_metric = subparsers.add_parser('launch-metrics', help='Launches metric collection thread')
+    parser_metric.add_argument('-c', '--cluster-name', required=True, help='Name of cluster')
+    parser_metric.add_argument('-j', '--jobstore', required=True, help='Name of jobstore')
+    parser_metric.add_argument('--namespace', default='jtvivian', help='CGCloud NameSpace')
+
+    # Parse args
+    params = parser.parse_args()
+
+    # Modular Run Sequence
+    if params.command == 'launch-cluster':
+        launch_cluster(params)
+    elif params.command == 'launch-pipeline': 
+        launch_pipeline(params)
+        place_boto_on_leader(params)
+    elif params.command == 'launch-metrics':
+        manage_metrics_and_cluster_scaling(params)
+
+
+if __name__ == '__main__':
+    main()
