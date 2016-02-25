@@ -32,6 +32,7 @@ from boto.ec2 import connect_to_region
 from datetime import datetime
 from itertools import groupby
 from automated_scaling import *
+from input_files import *
 
 metric_endtime_margin = timedelta(hours=1)
 metric_initial_wait_period_in_seconds = 0
@@ -39,26 +40,13 @@ metric_collection_interval_in_seconds = 3600
 metric_start_time_margin = 1800
 
 scaling_initial_wait_period_in_seconds = 300
-cluster_scaling_interval_in_seconds = 300
+cluster_scaling_interval_in_seconds = 300\
 
 cluster_size_lock = threading.Lock()
 
+instance_log = 'instances.log'
+
 aws_region = 'us-west-2'
-
-ref = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa"
-amb = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.amb"
-ann = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.ann"
-bwt = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.bwt"
-pac = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.pac"
-sa = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.sa"
-fai = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.fai"
-alt = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/GRCh38_full_analysis_set_plus_decoy_hla.fa.alt"
-phase = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL.wgs.1000G_phase3.GRCh38.ncbi_remapper.20150424.shapeit2_indels.vcf.gz"
-mills = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/Mills_and_1000G_gold_standard.indels.b38.primary_assembly.vcf.gz"
-dbsnp = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf.gz"
-omni = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL.wgs.1000G_phase3.GRCh38.ncbi_remapper.20150424.shapeit2_indels.vcf.gz"
-hapmap = "https://s3-us-west-2.amazonaws.com/cgl-pipeline-inputs/variant_grch38/ALL_20141222.dbSNP142_human_GRCh38.snps.vcf.gz"
-
 
 def launch_cluster(params):
     """
@@ -72,7 +60,7 @@ def launch_cluster(params):
                            '--leader-instance-type', params.leader_type,
                            '--instance-type', params.instance_type,
                            '--share', params.share,
-                           '--num-workers', str(params.num_workers),
+                           '--num-workers', "1",
                            '--cluster-name', params.cluster_name,
                            '--spot-bid', str(params.spot_bid),
                            '--leader-on-demand',
@@ -113,22 +101,21 @@ def launch_pipeline(params):
                                "python", "-m", "toil-scripts.adam_gatk_pipeline.align_and_call",
                                "aws:{0}:{1}".format(aws_region, jobstore),
                                "--retryCount", "1",
-                               "--s3_bucket", "fnothaft-fc-test-west-2", # MAKE THIS A VARIABLE
+                               "--s3_bucket", params.bucket,
                                "--bucket_region", aws_region,
-                               "--aws_access_key", "${FC_AWS_ACCESS_KEY_ID}", # THESE SHOULDN'T BE HERE
-                               "--aws_secret_key", "${FC_AWS_SECRET_ACCESS_KEY}", # THESE SHOULDN'T BE HERE
-                               "--ref", ref,
-                               "--amb" amb,
-                               "--ann", ann,
-                               "--bwt", bwt,
-                               "--pac", pac,
-                               "--sa", sa,
-                               "--fai", fai,
-                               "--alt", alt,
+                               "--uuid_manifest", input_files.inputs["manifest"],
+                               "--ref", input_files.inputs["ref"],
+                               "--amb", input_files.inputs["amp"],
+                               "--ann", input_files.inputs["ann"],
+                               "--bwt", input_files.inputs["bwt"],
+                               "--pac", input_files.inputs["pac"],
+                               "--sa", input_files.inputs["sa"],
+                               "--fai", input_files.inputs["fai"],
+                               "--alt", input_files.inputs["alt"],
                                "--use_bwakit",
-                               "--num_nodes", "2", # what does this number affect? find out
-                               "--driver_memory", "50g", #entire node
-                               "--executor_memory", "50g",#entire node
+                               "--num_nodes", "9", # Size of the Spark cluster
+                               "--driver_memory", params.memory,
+                               "--executor_memory", params.memory,
                                "--phase", phase,
                                "--mills", mills,
                                "--dbsnp", dbsnp,
@@ -136,10 +123,9 @@ def launch_pipeline(params):
                                "--hapmap", hapmap,
                                "--batchSystem", "mesos",
                                "--mesosMaster", "$(hostname -i):5050",
-                               "--workDir", "/var/lib/toil"
-                               "--file_size", "1G"
-                               "--logInfo",
-                               restart])
+                               "--workDir", "/var/lib/toil",
+                               "--file_size", params.file_size,
+                               "--logInfo"] + [restart])
     except subprocess.CalledProcessError as e:
         log.info('Pipeline exited with non-zero status code: {}'.format(e))
 
@@ -180,8 +166,7 @@ def get_desired_cluster_size(conn, dom):
 
 
 def update_cluster_size(conn, dom, n):
-    cluster_size = ClusterSize.load(conn, dom)
-    cluster_size.change_size(n)
+    ClusterSize.change_size(conn, dom, n)
 
 
 def grow_cluster(n, instance_type, cluster_name, spot_bid):
@@ -208,6 +193,9 @@ def grow_cluster(n, instance_type, cluster_name, spot_bid):
                                        '--spot-bid', str(spot_bid),
                                        '--zone', zone,
                                        'toil'])
+        instance_log.write("Growing cluster. Current instances are: ")
+        for line in nodes:
+            instance_log.write(line)
         new_size = nodes.count('\n') - 1 # Subtract 1 for header
         diff = new_size-old_size
         log.info('Successfully grew cluster by {} nodes of type: {}'.format(new_size-curr_size, instance_type))
@@ -216,8 +204,8 @@ def grow_cluster(n, instance_type, cluster_name, spot_bid):
 def manage_metrics_and_cluster_scaling(params):
     conn = boto.sdb.connect_to_region(aws_region)
     dom = conn.get_domain("{0}--files".format(params.jobstore))
-    grow_cluster_thread = threading.Thread(target=monitor_cluster_size, args(params, conn, dom))
-    metric_collection_thread = threading.Thread(target=collect_realtime_metrics, args(params, conn, dom))
+    grow_cluster_thread = threading.Thread(target=monitor_cluster_size, args=(params, conn, dom))
+    metric_collection_thread = threading.Thread(target=collect_realtime_metrics, args=(params, conn, dom))
     grow_cluster_thread.start()
     metric_collection_thread.start()
     grow_cluster_thread.join()
@@ -323,6 +311,7 @@ def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2
                             cluster_size = get_cluster_size()
                             if cluster_size > get_desired_cluster_size():
                                 log.info('Terminating Instance: {}'.format(instance_id))
+                                instance_log.write('Killing instance {0}\n'.format(instance_id))
                                 conn.terminate_instances(instance_ids=[instance_id])
                                 update_cluster_size(cluster_size - 1)
                     except (EC2ResponseError, BotoServerError) as e:
@@ -364,12 +353,11 @@ def main():
 
     # Launch Cluster
     parser_cluster = subparsers.add_parser('launch-cluster', help='Launches AWS cluster via CGCloud')
-    parser_cluster.add_argument('-s', '--num-workers', required=True, help='Number of workers desired in the cluster.')
     parser_cluster.add_argument('-c', '--cluster-name', required=True, help='Name of cluster.')
     parser_cluster.add_argument('-S', '--share', required=True,
                                 help='Full path to directory: pipeline script, launch script, config, and master key.')
     parser_cluster.add_argument('--spot-bid', default=1.00, help='Change spot price of instances')
-    parser_cluster.add_argument('-t', '--instance-type', default='c3.8xlarge',
+    parser_cluster.add_argument('-t', '--instance-type', default='r3.8xlarge',
                                 help='slave instance type. e.g.  m4.large or c3.8xlarge.')
     parser_cluster.add_argument('-T', '--leader-type', default='m3.medium', help='Sets leader instance type.')
     parser_cluster.add_argument('-b', '--boto-path', default='/home/mesosbox/.boto', type=str,
@@ -382,8 +370,9 @@ def main():
                                  help='Name of jobstore. Defaults to UUID-Date if not set')
     parser_pipeline.add_argument('--restart', default=None, action='store_true',
                                  help='Attempts to restart pipeline, requires existing jobstore.')
-    parser_pipeline.add_argument('-b', '--bucket', default='tcga-output', help='Set destination bucket.')
-    
+    parser_pipeline.add_argument('-b', '--bucket', default='almussel-adam-test', help='Set destination bucket.')
+    parser_pipeline.add_argument('-m', '--memory', defualt='200g', help='The memory per worker node in GB') 
+    parser_pipeline.add_argument('-f', '--file_size', default='1G')
 
     # Launch Metric Collection
     parser_metric = subparsers.add_parser('launch-metrics', help='Launches metric collection thread')
