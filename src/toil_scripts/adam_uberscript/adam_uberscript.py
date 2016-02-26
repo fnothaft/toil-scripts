@@ -69,6 +69,9 @@ def launch_cluster(params):
                            'toil'])
     subprocess.check_call(['cgcloud', 'rsync', '--zone', "{0}a".format(aws_region), '--cluster-name', params.cluster_name,
                            '--ssh-opts="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"',
+                           'toil-leader', '-a', inputs['manifest'], ":"])
+    subprocess.check_call(['cgcloud', 'rsync', '--zone', "{0}a".format(aws_region), '--cluster-name', params.cluster_name,
+                           '--ssh-opts="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"',
                            'toil-leader', '-a', params.share, ":"])
 
 def place_boto_on_leader(params):
