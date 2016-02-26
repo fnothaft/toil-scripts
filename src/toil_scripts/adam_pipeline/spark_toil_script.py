@@ -36,9 +36,9 @@ from subprocess import call, check_call, check_output
 import sys
 import time
 from toil.job import Job
-import bot.sdb
+import boto.sdb
 from toil_scripts.batch_alignment.bwa_alignment import docker_call
-from toil_script.adam_uberscript.automated_scaling import Samples
+from toil_scripts.adam_uberscript.automated_scaling import Samples
 
 SPARK_MASTER_PORT = "7077"
 HDFS_MASTER_PORT = "8020"
@@ -51,7 +51,7 @@ def start_master(job, inputs):
     Starts the master service.
     """
     if "autoscale_cluster" in input_args and input_args["autoscale_cluster"]:
-        Samples.increase_nodes(inputs.['uuid'], 10)
+        Samples.increase_nodes(inputs['uuid'], 10)
 
     log.write("master job\n")
     log.flush()

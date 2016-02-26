@@ -40,6 +40,8 @@ import logging
 from toil.job import Job
 from toil_scripts import download_from_s3_url
 
+from toil_scripts.adam_uberscript.automated_scaling import Samples
+
 log = logging.getLogger(__name__)
 
 
