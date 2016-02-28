@@ -319,7 +319,8 @@ def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2
     time.sleep(metric_initial_wait_period_in_seconds)
     
     while True:
-        ids = get_instance_ids(filter_cluster=params.cluster_name, filter_name=params.namespace + '_toil-worker')
+        # FIXME: why doesn't filter_cluster=params.cluster_name work?
+        ids = get_instance_ids(filter_name=params.namespace.strip('/').rstrip('/') + '_toil-worker')
         if not ids:
             break
         metric_collection_time = time.time()
@@ -365,14 +366,16 @@ def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2
                 timestamps[instance_id] = max(x.timestamp for x in datapoints) if datapoints else start
         except BotoServerError:
             log.error('Giving up trying to fetch metric for this interval')
-    # Sleep
-    collection_time = time.time() - metric_collection_time
-    log.info('Metric collection took: {} seconds. Waiting one hour.'.format(collection_time))
-    wait_time = metric_collection_interval_in_seconds - collection_time
-    if wait_time < 0:
-        log.warning('Collection time exceeded metric collection interval by: %i', -wait_time)
-    else:
-        time.sleep(wait_time)
+
+        # Sleep
+        collection_time = time.time() - metric_collection_time
+        log.info('Metric collection took: {} seconds. Waiting one hour.'.format(collection_time))
+        wait_time = metric_collection_interval_in_seconds - collection_time
+        if wait_time < 0:
+            log.warning('Collection time exceeded metric collection interval by: %i', -wait_time)
+        else:
+            time.sleep(wait_time)
+
     log.info('Metric collection has finished.')
 
 
