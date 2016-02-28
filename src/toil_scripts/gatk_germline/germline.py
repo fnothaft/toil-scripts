@@ -565,15 +565,6 @@ def apply_vqsr_indel(job, shared_ids, input_args):
 
     upload_or_move_hc(work_dir, input_args, output)
 
-def cleanup(input_args):
-    """
-    Does nothing unless run from the ADAM/GATK pipeline
-    If run from the ADAM/GATK pipeline, reduces node requirements by 1
-    """
-    if "autoscale_cluster" in input_args and input_args["autoscale_cluster"]:
-        Samples.decrease_nodes(inputs['uuid'], 1)
-
-
 
 if __name__ == '__main__':
     args_parser = build_parser()
