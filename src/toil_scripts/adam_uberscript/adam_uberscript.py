@@ -270,7 +270,7 @@ def monitor_cluster_size(params, conn, dom):
         if cluster_size < desired_cluster_size:
             with node_allocation_lock:
                 grow_cluster(desired_cluster_size - cluster_size, params.instance_type, params.cluster_name, params.spot_bid)
-        update_cluster_size(desired_cluster_size)
+        update_cluster_size(conn, dom, desired_cluster_size)
 
         # Sleep
         resize_time = time.time() - size_check_time
@@ -362,7 +362,7 @@ def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2
                                 log.info('Terminating Instance: {}'.format(instance_id))
                                 instance_log.write('Killing instance {0}\n'.format(instance_id))
                                 conn.terminate_instances(instance_ids=[instance_id])
-                                update_cluster_size(cluster_size - 1)
+                                update_cluster_size(sdbconn, dom, cluster_size - 1)
                     except (EC2ResponseError, BotoServerError) as e:
                         log.info('Error terminating instance: {}\n{}'.format(instance_id, e))
                 # Set start point to be last collected timestamp
