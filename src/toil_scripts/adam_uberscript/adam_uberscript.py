@@ -67,18 +67,32 @@ def launch_cluster(params):
                            '--ssh-opts',
                            '"UserKnownHostsFile=/dev/null StrictHostKeyChecking=no"',
                            'toil'])
-    subprocess.check_call(['cgcloud', 'rsync', '--zone', "{0}a".format(aws_region), '--cluster-name', params.cluster_name,
+    subprocess.check_call(['cgcloud',
+                           'rsync',
+                           '--zone', "{0}a".format(aws_region),
+                           '--cluster-name', params.cluster_name,
                            '--ssh-opts="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"',
-                           'toil-leader', '-a', inputs['manifest'], ":"])
-    subprocess.check_call(['cgcloud', 'rsync', '--zone', "{0}a".format(aws_region), '--cluster-name', params.cluster_name,
+                           'toil-leader',
+                           '-a',
+                           inputs['manifest'], ":~/manifest"])
+    subprocess.check_call(['cgcloud',
+                           'rsync',
+                           '--zone', "{0}a".format(aws_region),
+                           '--cluster-name', params.cluster_name,
                            '--ssh-opts="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"',
-                           'toil-leader', '-a', params.share, ":"])
+                           'toil-leader',
+                           '-a',
+                           params.share.rstrip("/"), ":"])
 
 def place_boto_on_leader(params):
     log.info('Adding a .boto to leader to avoid credential timeouts.')
-    subprocess.check_call(['cgcloud', 'rsync', '--zone', "{0}a".format(aws_region), '--cluster-name', params.cluster_name,
+    subprocess.check_call(['cgcloud',
+                           'rsync',
+                           '--zone', "{0}a".format(aws_region),
+                           '--cluster-name', params.cluster_name,
                            '--ssh-opts="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"',
-                           'toil-leader', params.boto_path, ':'])
+                           'toil-leader',
+                           params.boto_path, ':~/.boto'])
 
 
 def launch_pipeline(params):
@@ -95,8 +109,13 @@ def launch_pipeline(params):
     log.info('Launching Pipeline and blocking. Check log.txt on leader for stderr and stdout')
     try:
         # Create screen session
-        subprocess.check_call(['cgcloud', 'ssh', '--zone', "{0}a".format(aws_region), '--cluster-name', params.cluster_name, 'toil-leader',
-                               '-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no',
+        subprocess.check_call(['cgcloud',
+                               'ssh',
+                               '--zone', "{0}a".format(aws_region),
+                               '--cluster-name', params.cluster_name,
+                               'toil-leader',
+                               '-o', 'UserKnownHostsFile=/dev/null',
+                               '-o', 'StrictHostKeyChecking=no',
                                'screen', '-dmS', params.cluster_name])
         # Run command on screen session
         
@@ -106,7 +125,7 @@ def launch_pipeline(params):
                            "--retryCount 1 " + \
                            "--s3_bucket {b} " + \
                            "--bucket_region {region} " + \
-                           "--uuid_manifest {manifest} " + \
+                           "--uuid_manifest ~/manifest " + \
                            "--ref {ref} " + \
                            "--amb {amb} " + \
                            "--ann {ann} " + \
@@ -130,12 +149,25 @@ def launch_pipeline(params):
                            "--file_size {fs} " + \
                            "--logInfo " + \
                            "{r} \n"
-        pipeline_command = pipeline_command.format(j=jobstore, b=params.bucket, region=aws_region, s=params.spark_nodes, m=params.memory, fs=params.file_size, r=restart,  **inputs)
+        pipeline_command = pipeline_command.format(j=jobstore,
+                                                   b=params.bucket,
+                                                   region=aws_region,
+                                                   s=params.spark_nodes,
+                                                   m=params.memory,
+                                                   fs=params.file_size,
+                                                   r=restart,
+                                                   **inputs)
 
         for chunk in [pipeline_command[i:i+500] for i in range(0, len(pipeline_command),500)]:
-            subprocess.check_call(['cgcloud', 'ssh', '--zone', "{0}a".format(aws_region), '--cluster-name', params.cluster_name, 'toil-leader',
-                                   '-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no',
-                                   'screen', '-S', params.cluster_name, '-X', 'stuff', '"{0}"'.format(chunk)])
+            subprocess.check_call(['cgcloud',
+                                   'ssh',
+                                   '--zone', "{0}a".format(aws_region),
+                                   '--cluster-name', params.cluster_name,
+                                   'toil-leader',
+                                   '-o', 'UserKnownHostsFile=/dev/null',
+                                   '-o', 'StrictHostKeyChecking=no',
+                                   'screen', '-S', params.cluster_name,
+                                   '-X', 'stuff', '"{0}"'.format(chunk)])
     
     except subprocess.CalledProcessError as e:
         log.info('Pipeline exited with non-zero status code: {}'.format(e))
@@ -166,7 +198,9 @@ def get_cluster_size(cluster_name):
     """
     Returns the number of running toil-worker nodes
     """
-    numlines = subprocess.check_output["cgcloud", "list", "-c", cluster_name, "toil-worker"].count("\n")
+    numlines = subprocess.check_output(["cgcloud",
+                                        "list",
+                                        "-c", cluster_name, "toil-worker"]).count("\n")
     return numlines - 1 # Subtract 1 for header
 
 
@@ -381,9 +415,9 @@ def main():
                                  help='Name of jobstore. Defaults to UUID-Date if not set')
     parser_pipeline.add_argument('--restart', default=None, action='store_true',
                                  help='Attempts to restart pipeline, requires existing jobstore.')
-    parser_pipeline.add_argument('-B', '--bucket', default='almussel-adam-test', help='Set destination bucket.')
+    parser_pipeline.add_argument('-B', '--bucket', help='Set destination bucket.')
     parser_pipeline.add_argument('-m', '--memory', default='200g', help='The memory per worker node in GB') 
-    parser_pipeline.add_argument('-f', '--file_size', default='1G', help='Approximate size of the BAM files')
+    parser_pipeline.add_argument('-f', '--file_size', default='100G', help='Approximate size of the BAM files')
     parser_pipeline.add_argument('-s', '--spark_nodes', default='9', help='The number of nodes needed for the spark cluster')
 
     # Launch Metric Collection
