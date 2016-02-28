@@ -268,7 +268,7 @@ def monitor_cluster_size(params, conn, dom):
         cluster_size = get_cluster_size(params.cluster_name)
         desired_cluster_size = get_desired_cluster_size(conn, dom)
         if cluster_size < desired_cluster_size:
-            with node_allocation_lock:
+            with cluster_size_lock:
                 grow_cluster(desired_cluster_size - cluster_size, params.instance_type, params.cluster_name, params.spot_bid)
         update_cluster_size(conn, dom, desired_cluster_size)
 
@@ -356,8 +356,8 @@ def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2
                 # Kill instance if idle and cluster is too large
                 if idle:
                     try:
-                        with node_allocation_lock:
-                            cluster_size = get_cluster_size()
+                        with cluster_size_lock:
+                            cluster_size = get_cluster_size(params.cluster_name)
                             if cluster_size > get_desired_cluster_size(sdbconn, dom):
                                 log.info('Terminating Instance: {}'.format(instance_id))
                                 instance_log.write('Killing instance {0}\n'.format(instance_id))
