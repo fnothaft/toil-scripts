@@ -266,7 +266,7 @@ def monitor_cluster_size(params, conn, dom):
         size_check_time = time.time()
         # If cluster is too small, grow it
         cluster_size = get_cluster_size(params.cluster_name)
-        desired_cluster_size = get_desired_cluster_size()
+        desired_cluster_size = get_desired_cluster_size(conn, dom)
         if cluster_size < desired_cluster_size:
             with node_allocation_lock:
                 grow_cluster(desired_cluster_size - cluster_size, params.instance_type, params.cluster_name, params.spot_bid)
@@ -309,6 +309,9 @@ def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2
     # Create connections to ec2 and cloudwatch
     conn = boto.ec2.connect_to_region(region)
     cw = boto.ec2.cloudwatch.connect_to_region(region)
+    sdbconn = boto.sdb.connect_to_region(region)
+    dom = sdbconn.get_domain("{0}--files".format(params.jobstore))
+
     # Create initial variables
     start = datetime.utcfromtimestamp(start)
     DataPoint = namedtuple('datapoint', ['instance_id', 'value', 'timestamp'])
@@ -355,7 +358,7 @@ def collect_realtime_metrics(params, conn, dom, threshold=0.5, region='us-west-2
                     try:
                         with node_allocation_lock:
                             cluster_size = get_cluster_size()
-                            if cluster_size > get_desired_cluster_size():
+                            if cluster_size > get_desired_cluster_size(sdbconn, dom):
                                 log.info('Terminating Instance: {}'.format(instance_id))
                                 instance_log.write('Killing instance {0}\n'.format(instance_id))
                                 conn.terminate_instances(instance_ids=[instance_id])
