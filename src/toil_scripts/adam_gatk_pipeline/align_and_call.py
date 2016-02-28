@@ -478,7 +478,7 @@ if __name__ == '__main__':
     domain = None
     if args.autoscale_cluster:
         aws, region, domain = args.jobStore.split(':')
-        if ((aws is not "aws") or
+        if ((aws != "aws") or
             (region is None) or
             (domain is None)):
             raise ValueError("Invalid jobstore for autoscaling run: %s." % args.jobStore)
