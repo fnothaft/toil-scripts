@@ -265,16 +265,16 @@ def monitor_cluster_size(params, conn, dom):
     while True:
         size_check_time = time.time()
         # If cluster is too small, grow it
-        cluster_size = get_cluster_size()
+        cluster_size = get_cluster_size(params.cluster_name)
         desired_cluster_size = get_desired_cluster_size()
         if cluster_size < desired_cluster_size:
             with node_allocation_lock:
-                grow_cluster(desired_cluster_size - cluster_size, params.instance_type, cluster_name, spot_bid)
+                grow_cluster(desired_cluster_size - cluster_size, params.instance_type, params.cluster_name, params.spot_bid)
         update_cluster_size(desired_cluster_size)
 
         # Sleep
         resize_time = time.time() - size_check_time
-        log.info('Cluster is {} nodes as of {}'.format(get_cluster_size(), resize_time))
+        log.info('Cluster is {} nodes as of {}'.format(get_cluster_size(params.cluster_name), resize_time))
         wait_time = cluster_scaling_interval_in_seconds - resize_time
         if wait_time > 0:
             time.sleep(wait_time)
