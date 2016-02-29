@@ -384,7 +384,7 @@ def static_dag(job,
     # since we evaluate this conditional repeatedly, just calculate it once
     # we should only schedule the job that increases the node count if we
     # are using autoscaling _and_ we are increasing the node count
-    autoscale_after_alignment = (nodes_needed_after_alignment > 1) and autoscale_cluster:
+    autoscale_after_alignment = (nodes_needed_after_alignment > 1) and autoscale_cluster
 
     # create a job that runs after ADAM's preprocessing to decrease the number of nodes
     decrease_nodes_after_adam_preprocess = job.wrapJobFn(decrease_node_count,
