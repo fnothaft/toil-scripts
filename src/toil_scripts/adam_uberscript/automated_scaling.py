@@ -134,6 +134,7 @@ class ClusterSize(object):
             else:
                 raise
 
+    @classmethod
     def change_size(cls, conn, dom, n):
         while True:
             cluster_size = cls.load(conn, dom)
