@@ -220,27 +220,23 @@ def grow_cluster(n, instance_type, cluster_name, spot_bid):
     """
     old_size = get_cluster_size(cluster_name)
     new_size = old_size
+    diff = 0
     while diff < n:
         curr_size = new_size
         ec2 = connect_to_region(aws_region)
-        zone = { z: ec2.get_spot_price_history(instance_type=instance_type, 
-                                               availability_zone=z,
-                                               product_description='Linux/UNIX',
-                                               start_time=datetime.utcnow().isoformat() )
-                 for z in ( aws_region + c for c in 'ab' ) }
         log.info('Growing cluster by {} nodes of type: {}'.format(n, instance_type))
         nodes = subprocess.check_call(['cgcloud',
                                        'grow-cluster',
                                        '--list',
-                                       '--instance-type', instance_type,
+                                       '--instance-type', str(instance_type),
                                        '--num-workers', str(n),
-                                       '--cluster-name', cluster_name,
+                                       '--cluster-name', str(cluster_name),
                                        '--spot-bid', str(spot_bid),
-                                       '--zone', zone,
+                                       '--zone', ("%sa" % aws_region),
                                        'toil'])
-        instance_log.write("Growing cluster. Current instances are: ")
+        log.write("Growing cluster. Current instances are: ")
         for line in nodes:
-            instance_log.write(line)
+            log.write(line)
         new_size = nodes.count('\n') - 1 # Subtract 1 for header
         diff = new_size-old_size
         log.info('Successfully grew cluster by {} nodes of type: {}'.format(new_size-curr_size, instance_type))
@@ -436,7 +432,7 @@ def main():
     parser_metric.add_argument('--namespace', default='jtvivian', help='CGCloud NameSpace')
     parser_metric.add_argument('-t', '--instance-type', default='r3.8xlarge',
                                help='Worker instance type. e.g.  m4.large or c3.8xlarge.')
-
+    parser_metric.add_argument('--spot-bid', default=1.00, help='Change spot price of instances')
 
     # Parse args
     params = parser.parse_args()
