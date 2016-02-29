@@ -247,7 +247,7 @@ def sample_loop(job,
     # are we autoscaling? if so, bump the cluster size by one now
     if autoscale_cluster:
         connection = boto.sdb.connect_to_region(region)
-        boto_domain = conn.get_domain("{0}--files".format(domain))
+        boto_domain = connection.get_domain("{0}--files".format(domain))
         nodes_per_sample = Samples.load(connection, boto_domain)
         nodes_per_sample.increase_nodes(uuid, 1)
 
@@ -448,7 +448,7 @@ def static_dag(job,
 def increase_node_count(job, nodes_to_add, region, domain, uuid):
 
     connection = boto.sdb.connect_to_region(region)
-    boto_domain = conn.get_domain("{0}--files".format(domain))
+    boto_domain = connection.get_domain("{0}--files".format(domain))
     nodes_per_sample = Samples.load(connection, boto_domain)
     nodes_per_sample.increase_nodes(uuid, nodes_to_add)
 
@@ -456,7 +456,7 @@ def increase_node_count(job, nodes_to_add, region, domain, uuid):
 def decrease_node_count(job, nodes_to_add, region, domain, uuid):
 
     connection = boto.sdb.connect_to_region(region)
-    boto_domain = conn.get_domain("{0}--files".format(domain))
+    boto_domain = connection.get_domain("{0}--files".format(domain))
     nodes_per_sample = Samples.load(connection, boto_domain)
     nodes_per_sample.decrease_nodes(uuid, nodes_to_add)
     
