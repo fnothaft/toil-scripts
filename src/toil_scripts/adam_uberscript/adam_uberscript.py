@@ -260,6 +260,8 @@ def monitor_cluster_size(params, conn, dom):
     """
     Monitors cluster size and grows it if the desired size is larger than the current size
     """
+    print params
+
     log.info('Cluster size monitor has started.')
     time.sleep(scaling_initial_wait_period_in_seconds)
     while True:
@@ -409,7 +411,7 @@ def main():
                                 help='Full path to directory: pipeline script, launch script, and master key.')
     parser_cluster.add_argument('--spot-bid', default=1.00, help='Change spot price of instances')
     parser_cluster.add_argument('-t', '--instance-type', default='r3.8xlarge',
-                                help='slave instance type. e.g.  m4.large or c3.8xlarge.')
+                                help='Worker instance type. e.g.  m4.large or c3.8xlarge.')
     parser_cluster.add_argument('-T', '--leader-type', default='m3.medium', help='Sets leader instance type.')
     parser_cluster.add_argument('-b', '--boto-path', default='/home/mesosbox/.boto', type=str,
                                 help='Path to local .boto file to be placed on leader.')
@@ -432,6 +434,9 @@ def main():
     parser_metric.add_argument('-c', '--cluster-name', required=True, help='Name of cluster')
     parser_metric.add_argument('-j', '--jobstore', required=True, help='Name of jobstore')
     parser_metric.add_argument('--namespace', default='jtvivian', help='CGCloud NameSpace')
+    parser_metric.add_argument('-t', '--instance-type', default='r3.8xlarge',
+                               help='Worker instance type. e.g.  m4.large or c3.8xlarge.')
+
 
     # Parse args
     params = parser.parse_args()
