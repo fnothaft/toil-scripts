@@ -59,17 +59,24 @@ class Samples(object):
         dom = conn.get_domain("{0}--files".format(domain))
 
         while True:
+            # load nodes per sample from sdb
             nodes_per_sample = cls.load(conn, dom)
+
+            # update or insert new nodes
             if sampleID in nodes_per_sample.samples:
-                nodes_per_sample.samples[sampleID][0] = nodes_per_sample.version+1
+                nodes_per_sample.samples[sampleID][0] = nodes_per_sample.version + 1
                 nodes_per_sample.samples[sampleID][1] += n
-                
             else:
-                nodes_per_sample.samples[sampleID] = [nodes_per_sample.version+1, n]
+                nodes_per_sample.samples[sampleID] = [nodes_per_sample.version + 1, n]
+
+            # attempt to write back to sdb; retry if failed
             if nodes_per_sample.save():
                 break
-        cluster_size = ClusterSize.load(conn, dom)
+
         while True:
+            # get the current cluster size
+            cluster_size = ClusterSize.load(conn, dom)
+
             sum = 0
             for sample, [sample_version, nodes] in nodes_per_sample.samples.items():
                 sum += nodes
@@ -78,7 +85,6 @@ class Samples(object):
                 if sum > cluster_size.size:
                     break
             nodes_per_sample = cls.load(conn,dom)
-            cluster_size = ClusterSize.load(conn, dom)
             time.sleep(2)
 
     @classmethod

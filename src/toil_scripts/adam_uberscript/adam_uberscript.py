@@ -218,28 +218,36 @@ def grow_cluster(n, instance_type, cluster_name, spot_bid):
     """
     grow the cluster by n nodes
     """
+
     old_size = get_cluster_size(cluster_name)
-    new_size = old_size
-    diff = 0
-    while diff < n:
-        curr_size = new_size
-        ec2 = connect_to_region(aws_region)
-        log.info('Growing cluster by {} nodes of type: {}'.format(n, instance_type))
-        nodes = subprocess.check_call(['cgcloud',
-                                       'grow-cluster',
-                                       '--list',
-                                       '--instance-type', str(instance_type),
-                                       '--num-workers', str(n),
-                                       '--cluster-name', str(cluster_name),
-                                       '--spot-bid', str(spot_bid),
-                                       '--zone', ("%sa" % aws_region),
-                                       'toil'])
-        log.write("Growing cluster. Current instances are: ")
-        for line in nodes:
-            log.write(line)
-        new_size = nodes.count('\n') - 1 # Subtract 1 for header
-        diff = new_size-old_size
-        log.info('Successfully grew cluster by {} nodes of type: {}'.format(new_size-curr_size, instance_type))
+    target_size = old_size + n
+    diff = n
+
+    # loop until we've grown the cluster by our target size
+    while diff > 0:
+        log.info('Growing cluster by {} nodes of type: {}'.format(diff, instance_type))
+
+        # call to cgcloud to increase the cluster size
+        subprocess.check_call(['cgcloud',
+                               'grow-cluster',
+                               '--list',
+                               '--instance-type', str(instance_type),
+                               '--num-workers', str(diff),
+                               '--cluster-name', str(cluster_name),
+                               '--spot-bid', str(spot_bid),
+                               '--zone', ("%sa" % aws_region),
+                               'toil'])
+
+        # how much did we grow by?
+        new_size = get_cluster_size(cluster_name)
+        diff = target_size - new_size
+
+        # log
+        log.info('Successfully grew cluster by {} nodes of type: {}.'.format(new_size - old_size,
+                                                                             instance_type))
+
+        # update our cluster size
+        old_size = new_size
     
 
 def manage_metrics_and_cluster_scaling(params):
@@ -268,7 +276,7 @@ def monitor_cluster_size(params, conn, dom):
         if cluster_size < desired_cluster_size:
             with cluster_size_lock:
                 grow_cluster(desired_cluster_size - cluster_size, params.instance_type, params.cluster_name, params.spot_bid)
-        update_cluster_size(conn, dom, desired_cluster_size)
+                update_cluster_size(conn, dom, desired_cluster_size)
 
         # Sleep
         resize_time = time.time() - size_check_time
