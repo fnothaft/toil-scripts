@@ -14,10 +14,8 @@
 # limitations under the License.
 #
 #!/usr/bin/env python2.7
-"""
-@author Frank Austin Nothaft fnothaft@berkeley.edu
-@date 12/30/2015
 
+"""
 Pipeline to go from FASTQ to VCF using both the ADAM+HaplotypeCaller pipeline
 as well as the GATK best practices pipeline.
 

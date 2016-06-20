@@ -14,11 +14,9 @@
 # limitations under the License.
 #
 #!/usr/bin/env python2.7
+
 """
 UCSC Computational Genomics Lab ADAM/Spark pipeline
-
-@author Audrey Musselman-Brown, almussel@ucsc.edu
-@author Frank Austin Nothaft, fnothaft@berkeley.edu
 
 Please see the README.md in the same directory
 

@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
 """
 Spawns a Spark cluster backed by HDFS.
-
-@author Audrey Musselman-Brown, almussel@ucsc.edu
-@author Frank Austin Nothaft, fnothaft@berkeley.edu
 """
 
 import logging

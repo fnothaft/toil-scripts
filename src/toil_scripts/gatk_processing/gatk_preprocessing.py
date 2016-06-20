@@ -14,10 +14,8 @@
 # limitations under the License.
 #
 #!/usr/bin/env python2.7
-"""
-@author Jacob Pfeil
-@data 01/13/2016
 
+"""
 Toil pipeline for processing bam files for GATK halpotype calling
 
 1 = download shared data
