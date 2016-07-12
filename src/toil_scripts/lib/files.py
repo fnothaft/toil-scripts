@@ -1,7 +1,7 @@
 from contextlib import closing
 import os
-import tarfile
 import shutil
+import tarfile
 
 
 def tarball_files(tar_name, file_paths, output_dir='.', prefix=''):
@@ -21,6 +21,20 @@ def tarball_files(tar_name, file_paths, output_dir='.', prefix=''):
             f_out.add(file_path, arcname=arcname)
 
 
+def __forall_files(file_paths, output_dir, op):
+    """
+    Applies a function to a set of files and an output directory.
+
+    :param str output_dir: Output directory
+    :param list[str] file_paths: Absolute file paths to move
+    """
+    for file_path in file_paths:
+        if not file_path.startswith('/'):
+            raise ValueError('Path provided (%s) is relative not absolute.' % file_path)
+        dest = os.path.join(output_dir, os.path.basename(file_path))
+        op(file_path, dest)
+
+
 def move_files(file_paths, output_dir):
     """
     Moves files from the working directory to the output directory.
@@ -28,11 +42,17 @@ def move_files(file_paths, output_dir):
     :param str output_dir: Output directory
     :param list[str] file_paths: Absolute file paths to move
     """
-    for file_path in file_paths:
-        if not file_path.startswith('/'):
-            raise ValueError('Path provided is relative not absolute.')
-        dest = os.path.join(output_dir, os.path.basename(file_path))
-        shutil.move(file_path, dest)
+    __forall_files(file_paths, output_dir, shutil.move)
+
+
+def copy_files(file_paths, output_dir):
+    """
+    Moves files from the working directory to the output directory.
+
+    :param str output_dir: Output directory
+    :param list[str] file_paths: Absolute file paths to move
+    """
+    __forall_files(file_paths, output_dir, shutil.copy)
 
 
 def consolidate_tarballs_job(job, fname_to_id):
