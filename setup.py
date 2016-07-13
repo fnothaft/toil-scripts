@@ -33,9 +33,9 @@ except ImportError:
                        'http://toil.readthedocs.io/en/latest/installation.html'.format(toil_min_version))
 
 if not parse_version(str(toil_min_version)) <= parse_version(toil_version) < parse_version(toil_max_version):
-    raise RuntimeError('Need Toil version within range [{},{}). Read about installing Toil at: '
+    raise RuntimeError('Need Toil version within range [{},{}) Currrent installed version: {}. Read about installing Toil at: '
                        'http://toil.readthedocs.io/en/latest/installation.html'
-                       ''.format(toil_min_version, toil_max_version))
+                       ''.format(toil_min_version, toil_max_version, toil_version))
 
 # bd2k-python-lib check -- Raise warning instead of install_requires to avoid version conflicts with Toil
 try:
