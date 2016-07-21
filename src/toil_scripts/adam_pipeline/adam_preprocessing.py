@@ -127,12 +127,19 @@ def call_adam(master_ip, inputs, arguments):
                       "--conf", "spark.driver.maxResultSize=0",
                       # set max result size to unlimited, see #177
                       "--"]
-    docker_call(rm=False,
-                tool="quay.io/ucsc_cgl/adam:962-ehf--6e7085f8cac4b9a927dc9fb06b48007957256b80",
-                docker_parameters=master_ip.docker_parameters(["--net=host"]),
-                parameters=(default_params + arguments),
-                work_dir=work_dir,
-                mock=False)
+
+    # are we running adam via docker, or do we have a native path?
+    if inputs.native_adam_path is None:
+        docker_call(rm=False,
+                    tool="quay.io/ucsc_cgl/adam:962-ehf--6e7085f8cac4b9a927dc9fb06b48007957256b80",
+                    docker_parameters=master_ip.docker_parameters(["--net=host"]),
+                    parameters=(default_params + arguments),
+                    work_dir=work_dir,
+                    mock=False)
+    else:
+        check_call(["%s/bin/adam-submit" % inputs.native_adam_path] +
+                   default_params +
+                   arguments)
 
 
 def remove_file(master_ip, filename, spark_on_toil):
@@ -292,7 +299,10 @@ def download_run_and_upload(job, master_ip, inputs, spark_on_toil):
 
     if inputs.run_local:
         inputs.local_dir = job.fileStore.getLocalTempDir()
-        hdfs_dir = "/data/"
+        if inputs.native_adam_path is None:
+            hdfs_dir = "/data/"
+        else:
+            hdfs_dir = inputs.local_dir
     else:
         hdfs_dir = "hdfs://{0}:{1}/{2}".format(master_ip, HDFS_MASTER_PORT, hdfs_subdir)
 
@@ -395,6 +405,7 @@ def generate_config():
                                   # This should be equal to the available memory on each worker node.
         run-local:                # Optional: If true, runs ADAM locally and doesn't connect to a cluster.
         local-dir:                # Required if run-local is true. Sets the local directory to use for input.
+        native-adam-path:         # Optional: If set, runs ADAM using the local build of ADAM at this path.
     """[1:])
 
 
