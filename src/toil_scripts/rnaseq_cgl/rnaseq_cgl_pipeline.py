@@ -20,7 +20,7 @@ from toil_scripts.lib import require, UserError
 from toil_scripts.lib.files import move_files
 from toil_scripts.lib.jobs import map_job
 from toil_scripts.lib.urls import download_url_job, s3am_upload
-from toil_scripts.tools.QC import run_fastqc
+from toil_scripts.tools.qc import run_fastqc
 from toil_scripts.tools.aligners import run_star
 from toil_scripts.tools.preprocessing import cutadapt
 from toil_scripts.tools.quantifiers import run_kallisto, run_rsem, run_rsem_postprocess
