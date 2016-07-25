@@ -73,8 +73,8 @@ def __call_quinine(arguments, memory,
 
     # set default parameters
     default_params = master + [
-                      "--conf", ("spark.driver.memory=%sg" % inputs.memory),
-                      "--conf", ("spark.executor.memory=%sg" % inputs.memory),
+                      "--conf", ("spark.driver.memory=%dg" % inputs.memory),
+                      "--conf", ("spark.executor.memory=%dg" % inputs.memory),
                       "--conf", "spark.driver.maxResultSize=0",
                       # set max result size to unlimited, see #177
                       "--"]
@@ -96,6 +96,7 @@ def __call_quinine(arguments, memory,
 def call_quinine_rna_native(reads,
                             transcriptome,
                             work_dir,
+                            memory,
                             native_path):
     '''
     Runs quinine to compute RNA-seq QC stats.
@@ -103,11 +104,13 @@ def call_quinine_rna_native(reads,
     :param str reads: Local path to input reads.
     :param str transcriptome: Local path to transcriptome definition.
     :param str work_dir: Local path to temp working directory.
+    :param int memory: Amount of memory in GiB to allocate per node.
     :param str native_path: Local path to quinine.
     '''
 
     __call_quinine(['rnaMetrics',
                     reads, transcriptome],
+                   memory,
                    run_local=True, local_dir=work_dir
                    native_path=native_path)
 
@@ -116,6 +119,7 @@ def call_quinine_hs_native(reads,
                            panel,
                            bait,
                            work_dir,
+                           memory,
                            native_path):
     '''
     Runs quinine to compute stats for a hybrid-selection targeted sequencing panel.
@@ -124,12 +128,14 @@ def call_quinine_hs_native(reads,
     :param str panel: Local path to definition of regions targeted by panel.
     :param str bait: Local path to definition of regions tiled by bait.
     :param str work_dir: Local path to temp working directory.
+    :param int memory: Amount of memory in GiB to allocate per node.
     :param str native_path: Local path to quinine.
     '''
 
     __call_quinine(['panelMetrics',
                     reads, panel, bait,
                     ],
+                   memory,
                    run_local=True, local_dir=work_dir
                    native_path=native_path)
 
@@ -138,6 +144,7 @@ def call_quinine_contamination_native(reads,
                                       genotypes,
                                       annotations,
                                       work_dir,
+                                      memory,
                                       native_path):
     '''
     Runs quinine to estimate inter-sample contamination.
@@ -146,10 +153,12 @@ def call_quinine_contamination_native(reads,
     :param str genotypes: Local path to genotypes.
     :param str annotations: Local path to annotations.
     :param str work_dir: Local path to temp working directory.
+    :param int memory: Amount of memory in GiB to allocate per node.
     :param str native_path: Local path to quinine.
     '''
     
     __call_quinine(['estimateContamination',
                     reads, genotypes, annotations],
+                   memory,
                    run_local=True, local_dir=work_dir,
                    native_path=native_path)
